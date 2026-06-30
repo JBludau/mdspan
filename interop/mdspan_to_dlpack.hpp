@@ -16,7 +16,9 @@
 namespace interop{
 namespace detail{
 
-void NonOwningDLPackDeleter(DLManagedTensor* managed_tensor) {
+template <typename Type>
+requires std::is_same_v<Type, DLManagedTensorVersioned> || std::is_same_v<Type, DLManagedTensor>
+void NonOwningDLPackDeleter(Type* managed_tensor) {
     if (managed_tensor) {
         delete[] managed_tensor->dl_tensor.shape;
         if (managed_tensor->dl_tensor.strides) {
@@ -25,7 +27,6 @@ void NonOwningDLPackDeleter(DLManagedTensor* managed_tensor) {
         delete managed_tensor;
     }
 }
-
 
 template <typename Type>
 [[nodiscard]] inline ::DLDataType type_to_dlpack () {
@@ -155,6 +156,51 @@ to_dlpack_tensor(const MDSPAN_IMPL_STANDARD_NAMESPACE :: mdspan<ElementType, Ext
   return detail::to_dlpack(mdspan_type{m}, ::kDLCPU, 0);
 #endif
 }
+
+PyObject* pass_versioned_dlpack_without_ownership(const ::DLTensor& src_tensor) {
+    ::DLManagedTensorVersioned* managed_tensor = new ::DLManagedTensorVersioned();
+
+    managed_tensor->version.major = DLPACK_MAJOR_VERSION;
+    managed_tensor->version.minor = DLPACK_MINOR_VERSION;
+    managed_tensor->manager_ctx   = nullptr;
+    managed_tensor->flags         = 0;
+    managed_tensor->dl_tensor     = src_tensor;
+
+    int64_t* shape_copy = new int64_t[src_tensor.ndim];
+    for (int64_t i = 0; i < src_tensor.ndim; ++i) {
+        shape_copy[i] = src_tensor.shape[i];
+    }
+    managed_tensor->dl_tensor.shape = shape_copy;
+
+    if (src_tensor.strides != nullptr) {
+        int64_t* strides_copy = new int64_t[src_tensor.ndim];
+        for (int64_t i = 0; i < src_tensor.ndim; ++i) {
+            strides_copy[i] = src_tensor.strides[i];
+        }
+        managed_tensor->dl_tensor.strides = strides_copy;
+    } else {
+        managed_tensor->dl_tensor.strides = nullptr;
+    }
+
+    managed_tensor->deleter = detail::NonOwningDLPackDeleter;
+
+    PyObject* capsule = PyCapsule_New(managed_tensor, "dltensor_versioned", [](PyObject* cap) {
+        if (PyCapsule_IsValid(cap, "dltensor_versioned")) {
+            auto* mt = static_cast<DLManagedTensorVersioned*>(
+                PyCapsule_GetPointer(cap, "dltensor_versioned"));
+            if (mt && mt->deleter) {
+                mt->deleter(mt);
+            }
+        }
+    });
+    if (capsule == nullptr) {
+        detail::NonOwningDLPackDeleter(managed_tensor);
+        return nullptr;
+    }
+
+    return capsule;
+}
+
 
 PyObject* pass_dlpack_without_ownership(const ::DLTensor& src_tensor) {
     ::DLManagedTensor* managed_tensor = new ::DLManagedTensor();
