@@ -114,3 +114,10 @@ endif()
 
 mdspan_add_test(test_constant_wrapper)
 mdspan_add_test(test_strided_slice)
+
+if(MDSPAN_ENABLE_DLPACK_INTEROPERABILITY)
+mdspan_add_test(test_python_interop)
+
+find_package(pybind11 CONFIG REQUIRED)
+target_link_libraries(test_python_interop mdspan::interop pybind11::embed)
+endif()

@@ -25,6 +25,7 @@ option(MDSPAN_USE_SYSTEM_GTEST "Use system-installed GoogleTest library for test
 option(MDSPAN_USE_SYSTEM_BENCHMARK "Use system-installed Google Benchmark library for benchmarks." On)
 option(MDSPAN_INSTALL_STDMODE_HEADERS "Whether to install headers to emulate standard library headers and namespaces" Off)
 option(MDSPAN_GENERATE_STD_NAMESPACE_TARGETS "Whether to generate and install targets with the std:: namespace instead of the mdspan:: namespace" Off)
+option(MDSPAN_ENABLE_DLPACK_INTEROPERABILITY "Enable interoperability for mdspan and dlpack" Off)
 
 # Option to override which C++ standard to use
 set(MDSPAN_CXX_STANDARD DETECT CACHE STRING "Override the default CXX_STANDARD to compile with.")
@@ -144,6 +145,21 @@ target_include_directories(mdspan INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+
+if(MDSPAN_ENABLE_DLPACK_INTEROPERABILITY)
+  find_package(dlpack CONFIG REQUIRED)
+
+  add_library(mdspan_interop INTERFACE)
+  target_include_directories(mdspan_interop INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/interop>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  )
+
+  target_link_libraries(mdspan_interop INTERFACE dlpack::dlpack)
+  target_link_libraries(mdspan_interop INTERFACE mdspan)
+  add_library(mdspan::interop ALIAS mdspan_interop)
+  
+endif()
 
 ################################################################################
 
